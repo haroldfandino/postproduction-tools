@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated outputs
+stills/
+specifications.md
+QC_Report.md
+*_Report.md
+
+# Large media files usually processed by these tools
+*.mp4
+*.mov
+*.mxf
+*.avi
+*.mkv
+*.wav
+*.aif
+*.aiff
+
+# Extracted/generated image sequences
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.exr
+*.dpx
