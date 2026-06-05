@@ -9,6 +9,7 @@ LOUDNESS_TOLERANCE = 2.0  # LU
 BITRATE_TOLERANCE = 2.0   # Mbps (for MP4)
 DURATION_TOLERANCE_SEC = 1.0 # Seconds
 EXPECTED_FRAME_RATE = "23.976"
+LONGFORM_DURATION_TAG = "longform"
 
 # --- Helper Functions ---
 
@@ -71,7 +72,8 @@ def parse_filename(filename):
             # Mixbook_StoryModeLaunch_15_4K_SOCIAL_H264.mp4
             format_type = "filmkraft_short" if len(parts) == 6 else "standard_missing_orientation"
 
-        if not duration_tag.isdigit():
+        is_longform = duration_tag.lower() == LONGFORM_DURATION_TAG
+        if not duration_tag.isdigit() and not is_longform:
             return None
         
         return {
@@ -79,7 +81,8 @@ def parse_filename(filename):
             "audio_type": audio_tag,        # SOCIAL / TV
             "resolution_tag": res_tag,      # HD / 4K
             "orientation": orientation_tag, # Horizontal / Vertical
-            "duration_tag": duration_tag,   # 15 / 30 etc
+            "duration_tag": duration_tag,   # 6 / 15 / 30 / Longform etc
+            "is_longform": is_longform,
             "filename": filename,
             "format_type": format_type
         }
@@ -139,13 +142,20 @@ def get_expected_specs(tags):
         specs["Loudness"] = "⁓24 LKFS"
         
     # 5. Duration (Set as integer seconds, conversion happens later with known FPS)
-    try:
-        seconds = int(tags["duration_tag"])
-        specs["Duration_Tag"] = seconds
-        specs["Duration"] = f"{seconds} seconds" # Will update with TC later
-    except:
+    if tags.get("is_longform"):
         specs["Duration_Tag"] = None
-        specs["Duration"] = "Unknown"
+        specs["Duration_Check"] = False
+        specs["Duration"] = "Informational only"
+    else:
+        try:
+            seconds = int(tags["duration_tag"])
+            specs["Duration_Tag"] = seconds
+            specs["Duration_Check"] = True
+            specs["Duration"] = f"{seconds} seconds" # Will update with TC later
+        except:
+            specs["Duration_Tag"] = None
+            specs["Duration_Check"] = False
+            specs["Duration"] = "Unknown"
 
     return specs
 
@@ -378,7 +388,9 @@ def analyze_file(filepath, expected_specs):
         report_items.append({"param": "Frame rate", "status": "FAIL", "expected": expected_specs["Frame rate"], "actual": actual["Frame rate"]})
 
     # 5. Duration (Strict Frame-Based Check)
-    if expected_specs["Duration_Tag"] is not None and fps_val > 0:
+    if expected_specs.get("Duration_Check") is False:
+        report_items.append({"param": "Duration", "status": "INFO", "expected": "No target duration", "actual": actual["Duration"]})
+    elif expected_specs["Duration_Tag"] is not None and fps_val > 0:
         target_sec_tag = expected_specs["Duration_Tag"]
         
         # Determine Base FPS for calculation
@@ -478,7 +490,7 @@ def generate_specifications_md(all_expected):
     for filename, specs in all_expected.items():
         content += f"## Profile for: `{filename}`\n\n"
         for key, value in specs.items():
-            if key == "Duration_Sec": continue # Skip internal value
+            if key in ["Duration_Sec", "Duration_Tag", "Duration_Check"]: continue # Skip internal values
             if key == "Total bitrate" and value is None: continue
             content += f"- [ ] {key}: {value}\n"
         content += "\n"
@@ -497,7 +509,7 @@ def generate_qc_report_md(all_results):
     # Pre-calculate overall stats
     for filename, items in all_results.items():
         if isinstance(items, list):
-            if all(i['status'] == 'PASS' for i in items):
+            if all(i['status'] != 'FAIL' for i in items):
                 passed_files += 1
         # Else it's an error dict, counts as fail
             
@@ -525,7 +537,12 @@ def generate_qc_report_md(all_results):
         content += "| Parameter | Expected | Actual | Status |\n"
         content += "| :--- | :--- | :--- | :--- |\n"
         for item in items:
-            icon = "✅" if item['status'] == "PASS" else "❌"
+            if item['status'] == "PASS":
+                icon = "✅"
+            elif item['status'] == "FAIL":
+                icon = "❌"
+            else:
+                icon = "INFO"
             content += f"| {item['param']} | {item['expected']} | {item['actual']} | {icon} |\n"
         
         content += "\n"

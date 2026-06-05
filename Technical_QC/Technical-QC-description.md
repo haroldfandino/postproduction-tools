@@ -39,6 +39,10 @@ Filmkraft videos can also use this shorter naming convention, with horizontal or
 
 [Client]_[ProjectDescription]_[Duration]_[HD or 4K]_[Type of audio: Social or TV]_[Codec: H264 or ProRes].[Extension: mp4 or mov]
 
+The duration tag can be a numeric target such as 6, 15, or 30. It can also be
+Longform. When the duration tag is Longform, the script should not check duration
+against a target; it should only show the measured duration in the QC report.
+
 This is an example:
 
 - Carve_Feb2026_Signature_15_Horizontal_HD_SOCIAL_H264.mp4
@@ -50,6 +54,8 @@ This is an example:
 - Carve_Feb2026_Signature_30_Vertical_HD_SOCIAL_H264.mp4
 - Carve_Feb2026_Signature_30_Vertical_HD_SOCIAL_Prores.mov
 - Mixbook_StoryModeLaunch_15_4K_SOCIAL_H264.mp4
+- Mustela_DermatologistStories_BabyDiaperRash_Longform_4K_TV_Prores.mov
+- Mustela_DermatologistStories_BabyDiaperRash_Longform_HD_TV_H264.mp4
 
 The script needs to create profiles in the specifications.md to address the variations provided within the naming convention. For example:
 

@@ -44,6 +44,10 @@ Client_ProjectDescription_ProjectType_Duration_Orientation_HD_SOCIAL_H264.mp4
 Client_ProjectDescription_Duration_4K_TV_ProRes.mov
 ```
 
+`Duration` can be a numeric target such as `6`, `15`, or `30`. It can also be
+`Longform`; longform files report the measured video duration without checking
+it against a target duration.
+
 Run it from the folder containing the videos, or pass a target folder:
 
 ```powershell
