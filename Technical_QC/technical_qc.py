@@ -136,6 +136,9 @@ def run_command(command):
     try:
         result = subprocess.run(
             command,
+            stdin=subprocess.DEVNULL,   # ffmpeg reads stdin by default; in a
+                                        # windowed/packaged app stdin is an
+                                        # invalid handle and ffmpeg would hang.
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -12,6 +12,7 @@ The visual language is inspired by the glassmorphic Figma mockups: soft gradient
 backgrounds, rounded frosted cards, pill buttons, and a light/dark theme toggle.
 """
 
+import json
 import os
 import sys
 
@@ -907,15 +908,66 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(report_path))
 
 
+def _selftest(args):
+    """
+    Headless diagnostic: resolve ffmpeg/ffprobe, run QC on a folder, and write a
+    JSON summary — no GUI. Useful for verifying a packaged build (incl. that its
+    bundled FFmpeg works).
+
+        Technical QC.exe --selftest <folder> [<output.json>]
+    """
+    folder = args[0] if args else os.getcwd()
+    out = args[1] if len(args) > 1 else os.path.join(folder, "selftest.json")
+
+    tools = qc.check_tools()
+    report = {
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "meipass": getattr(sys, "_MEIPASS", None),
+        "ffmpeg": tools.get("ffmpeg"),
+        "ffprobe": tools.get("ffprobe"),
+        "folder": folder,
+    }
+    try:
+        result = qc.run_qc(folder, log=lambda *_: None, write_files=False)
+        all_results = result["all_results"]
+        total = len(all_results)
+        passed = sum(
+            1 for items in all_results.values()
+            if isinstance(items, list) and all(i["status"] != "FAIL" for i in items)
+        )
+        # Did the loudness step (which requires a working ffmpeg) actually run?
+        loudness_ok = any(
+            isinstance(items, list)
+            and any(i["param"] == "Loudness" and i["actual"] not in ("Error", None)
+                    for i in items)
+            for items in all_results.values()
+        )
+        report.update({
+            "ok": True, "files_checked": total, "passed": passed,
+            "failed": total - passed, "skipped": len(result.get("skipped", [])),
+            "loudness_measured": loudness_ok,
+        })
+    except Exception as e:
+        report.update({"ok": False, "error": str(e)})
+
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2)
+    print(json.dumps(report, indent=2))
+    return 0 if report.get("ok") else 1
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        return _selftest(sys.argv[2:])
+
     app = QApplication(sys.argv)
     app.setApplicationName("Technical QC")
     app.setOrganizationName("indie.io")
     app.setWindowIcon(app_icon())
     window = MainWindow()
     window.show()
-    sys.exit(app.exec())
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
