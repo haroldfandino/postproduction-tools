@@ -140,6 +140,10 @@ touches a terminal.
 python make_icon.py            # regenerate icon.ico / icon.icns (already committed)
 ```
 
+On macOS this builds the `.icns` with Apple's `iconutil` for best fidelity
+(it falls back to Pillow elsewhere), so it's worth re-running on the Mac before
+building the `.app`.
+
 To bundle FFmpeg (recommended for a no-install experience), drop a **static**
 build of `ffmpeg` and `ffprobe` into `Technical_QC/ffmpeg/`:
 
