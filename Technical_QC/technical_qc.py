@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import json
 import re
@@ -11,12 +12,108 @@ DURATION_TOLERANCE_SEC = 1.0 # Seconds
 EXPECTED_FRAME_RATE = "23.976"
 LONGFORM_DURATION_TAG = "longform"
 
+# Common install locations to fall back on when a binary is not on PATH.
+# Covers Homebrew (Intel + Apple Silicon), MacPorts, and typical Windows installs.
+_FFMPEG_FALLBACK_DIRS = [
+    "/opt/homebrew/bin",      # macOS Apple Silicon (Homebrew)
+    "/usr/local/bin",         # macOS Intel (Homebrew) / Linux
+    "/opt/local/bin",         # macOS MacPorts
+    "/usr/bin",               # Linux
+    r"C:\ffmpeg\bin",         # common manual Windows install
+    r"C:\Program Files\ffmpeg\bin",
+]
+
+
+class ToolNotFoundError(RuntimeError):
+    """Raised when ffmpeg/ffprobe cannot be located on the system."""
+
+
+def find_executable(name):
+    """
+    Locate an executable (e.g. "ffmpeg" / "ffprobe") cross-platform.
+
+    Searches PATH first (via shutil.which, which handles the .exe suffix on
+    Windows automatically), then a set of common install directories. Returns
+    the resolved path, or None if it cannot be found.
+    """
+    found = shutil.which(name)
+    if found:
+        return found
+
+    exe_names = [name]
+    if os.name == "nt":
+        exe_names.append(name + ".exe")
+
+    for directory in _FFMPEG_FALLBACK_DIRS:
+        for exe in exe_names:
+            candidate = os.path.join(directory, exe)
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+def check_tools():
+    """
+    Verify ffmpeg and ffprobe are available.
+
+    Returns a dict {"ffmpeg": path_or_None, "ffprobe": path_or_None}. Used by
+    both the CLI and the GUI to give a clear, OS-appropriate error message
+    instead of an opaque crash deep inside subprocess.
+    """
+    return {
+        "ffmpeg": find_executable("ffmpeg"),
+        "ffprobe": find_executable("ffprobe"),
+    }
+
+
+def require_tools():
+    """Resolve ffmpeg/ffprobe paths or raise a helpful, OS-specific error."""
+    tools = check_tools()
+    missing = [name for name, path in tools.items() if not path]
+    if missing:
+        if sys.platform == "darwin":
+            hint = "Install with Homebrew:  brew install ffmpeg"
+        elif os.name == "nt":
+            hint = ("Install from https://www.gyan.dev/ffmpeg/builds/ (or "
+                    "`winget install Gyan.FFmpeg`) and ensure it is on your PATH.")
+        else:
+            hint = "Install with your package manager, e.g.  sudo apt install ffmpeg"
+        raise ToolNotFoundError(
+            f"Required tool(s) not found: {', '.join(missing)}.\n{hint}"
+        )
+    return tools
+
+
 # --- Helper Functions ---
 
 def run_command(command):
-    """Runs a shell command and returns the output."""
+    """
+    Runs a command and returns (stdout, stderr).
+
+    The first element of `command` is resolved against PATH and common install
+    locations so the tool works even when ffmpeg/ffprobe are installed but not
+    exported on PATH (common on macOS). CREATE_NO_WINDOW keeps a console window
+    from flashing when launched from a GUI on Windows.
+    """
+    if command:
+        resolved = find_executable(command[0])
+        if resolved:
+            command = [resolved, *command[1:]]
+
+    kwargs = {}
+    if os.name == "nt":
+        # Avoid a flashing console window when called from the GUI.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
     try:
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            **kwargs,
+        )
         return result.stdout, result.stderr
     except Exception as e:
         return None, str(e)
@@ -188,10 +285,6 @@ def get_video_metadata(filepath):
     """
     Uses ffprobe to get technical metadata.
     """
-def get_video_metadata(filepath):
-    """
-    Uses ffprobe to get technical metadata.
-    """
     cmd = [
         "ffprobe", 
         "-v", "quiet", 
@@ -244,10 +337,14 @@ def measure_loudness(filepath, duration=None):
         return float(matches[-1])
     return None
 
-def analyze_file(filepath, expected_specs):
+def analyze_file(filepath, expected_specs, log=print):
     """
     Orchestrates the analysis of a single file.
     Returns valid specs + passed/failed status.
+
+    `log` is a callable used for progress messages; defaults to print so the
+    CLI behaves as before, while the GUI can pass its own sink to surface
+    progress in the window.
     """
     meta = get_video_metadata(filepath)
     if not meta:
@@ -347,7 +444,7 @@ def analyze_file(filepath, expected_specs):
             actual["Channels"] = str(channels)
 
     # Loudness Measurement
-    print(f"Measuring loudness for {os.path.basename(filepath)} (Half Duration)...")
+    log(f"Measuring loudness for {os.path.basename(filepath)} (Half Duration)...")
     half_duration = duration_sec / 2 if duration_sec > 0 else None
     loudness = measure_loudness(filepath, duration=half_duration)
     
@@ -549,62 +646,110 @@ def generate_qc_report_md(all_results):
         
     return content
 
-def main():
-    # 1. Scan Directory
-    if len(sys.argv) > 1:
-        target_dir = sys.argv[1]
-    else:
-        target_dir = os.getcwd()
-        
-    print(f"Scanning directory: {target_dir}")
-    
-    if not os.path.exists(target_dir):
-        print(f"Error: Directory {target_dir} not found.")
-        return
+def list_video_files(target_dir):
+    """Return sorted .mp4/.mov filenames in target_dir."""
+    return sorted(
+        f for f in os.listdir(target_dir)
+        if f.lower().endswith((".mp4", ".mov"))
+    )
 
-    files = [f for f in os.listdir(target_dir) if f.lower().endswith(('.mp4', '.mov'))]
-    
+
+def run_qc(target_dir, log=print, progress=None, write_files=True):
+    """
+    Run the full QC pass over a directory. Reusable by the CLI and the GUI.
+
+    Args:
+        target_dir: folder to scan for .mp4/.mov files.
+        log: callable for human-readable progress lines.
+        progress: optional callable(done, total, current_filename) for UIs
+            that want to drive a progress bar.
+        write_files: when True, also write specifications.md and QC_Report.md
+            into target_dir (CLI behaviour). The GUI sets this too so reports
+            are saved alongside the videos, but uses the returned data to render.
+
+    Returns a dict with: all_expected, all_results, spec_content, report_content,
+    spec_path, report_path, skipped (list of filenames that did not match the
+    naming convention).
+
+    Raises ToolNotFoundError if ffmpeg/ffprobe are missing, and
+    FileNotFoundError if target_dir does not exist.
+    """
+    require_tools()
+
+    if not os.path.isdir(target_dir):
+        raise FileNotFoundError(f"Directory not found: {target_dir}")
+
+    log(f"Scanning directory: {target_dir}")
+    files = list_video_files(target_dir)
     if not files:
-        print("No .mp4 or .mov files found.")
-        return
+        log("No .mp4 or .mov files found.")
 
     all_expected = {}
     all_results = {}
-    
-    # 2. Process Files
-    for f in files:
+    skipped = []
+    total = len(files)
+
+    for index, f in enumerate(files):
         filepath = os.path.join(target_dir, f)
-        print(f"Processing: {f}")
-        
-        # Parse Filename
+        log(f"Processing: {f}")
+        if progress:
+            progress(index, total, f)
+
         tags = parse_filename(f)
         if not tags:
-            print(f"Skipping {f} - Does not match naming convention.")
+            log(f"Skipping {f} - Does not match naming convention.")
+            skipped.append(f)
             continue
-            
-        # Get Expected Specs
+
         expected = get_expected_specs(tags)
         all_expected[f] = expected
-        
-        # Analyze and Check
-        results = analyze_file(filepath, expected)
+
+        results = analyze_file(filepath, expected, log=log)
         all_results[f] = results
-        
-    # 3. Generate Specifications MD
-    spec_path = os.path.join(target_dir, "specifications.md")
-    print(f"Generating {spec_path}...")
+
+    if progress:
+        progress(total, total, None)
+
     spec_content = generate_specifications_md(all_expected)
-    with open(spec_path, "w", encoding="utf-8") as f:
-        f.write(spec_content)
-        
-    # 4. Generate QC Report
-    report_path = os.path.join(target_dir, "QC_Report.md")
-    print(f"Generating {report_path}...")
     report_content = generate_qc_report_md(all_results)
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(report_content)
-        
+
+    spec_path = os.path.join(target_dir, "specifications.md")
+    report_path = os.path.join(target_dir, "QC_Report.md")
+
+    if write_files:
+        log(f"Generating {spec_path}...")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write(spec_content)
+        log(f"Generating {report_path}...")
+        with open(report_path, "w", encoding="utf-8") as fh:
+            fh.write(report_content)
+
+    return {
+        "all_expected": all_expected,
+        "all_results": all_results,
+        "spec_content": spec_content,
+        "report_content": report_content,
+        "spec_path": spec_path,
+        "report_path": report_path,
+        "skipped": skipped,
+    }
+
+
+def main():
+    target_dir = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+
+    try:
+        run_qc(target_dir, log=print)
+    except ToolNotFoundError as e:
+        print(f"Error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        return 1
+
     print("Done!")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

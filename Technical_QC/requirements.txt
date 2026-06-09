@@ -1,0 +1,4 @@
+# Technical QC tool
+# The CLI (technical_qc.py) needs only the standard library + FFmpeg/FFprobe.
+# The desktop GUI (qc_gui.py) additionally needs PySide6.
+PySide6
