@@ -37,7 +37,7 @@ python C:\path\to\Rename_stills\rename_stills.py
 - `specifications.md`
 - `QC_Report.md`
 
-`Technical_QC/qc_gui.py` is a desktop GUI (Windows + macOS) over the same engine: pick or drag-and-drop a folder of videos, run the QC pass, and review pass/fail results per file and per parameter without using a terminal. It also writes the same `specifications.md` and `QC_Report.md` next to the videos.
+`Technical_QC/qc_gui.py` is a desktop GUI (Windows + macOS) over the same engine: pick or drag-and-drop a folder of videos, run the QC pass, and review pass/fail results per file and per parameter without using a terminal. The GUI shows everything on screen and does **not** write report files automatically — use the **Export report** button to save `specifications.md` and `QC_Report.md` into the source folder when you want them. The command-line tool always writes both files.
 
 The QC tool expects filenames like:
 
@@ -62,7 +62,7 @@ python Technical_QC\qc_gui.py
 python3 Technical_QC/qc_gui.py
 ```
 
-Then choose (or drag in) the folder of deliverables and click **Run QC**. Use the ☾ / ☀ toggle for dark / light mode, and **Open report** to view the generated `QC_Report.md`.
+Then choose (or drag in) the folder of deliverables and click **Run QC**. Use the ☾ / ☀ toggle for dark / light mode, the **Progress log** bar to show/hide the live log, and **Export report** to save `specifications.md` and `QC_Report.md` into the source folder.
 
 #### Command line
 

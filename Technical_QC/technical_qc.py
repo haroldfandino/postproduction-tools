@@ -654,6 +654,27 @@ def list_video_files(target_dir):
     )
 
 
+def write_reports(target_dir, spec_content, report_content, log=lambda *_: None):
+    """
+    Write specifications.md and QC_Report.md into target_dir.
+
+    Centralises report file creation here so it has a single owner: the CLI
+    writes via run_qc(write_files=True), and the GUI calls this only on an
+    explicit "Export report" action (never automatically).
+
+    Returns (spec_path, report_path).
+    """
+    spec_path = os.path.join(target_dir, "specifications.md")
+    report_path = os.path.join(target_dir, "QC_Report.md")
+    log(f"Generating {spec_path}...")
+    with open(spec_path, "w", encoding="utf-8") as fh:
+        fh.write(spec_content)
+    log(f"Generating {report_path}...")
+    with open(report_path, "w", encoding="utf-8") as fh:
+        fh.write(report_content)
+    return spec_path, report_path
+
+
 def run_qc(target_dir, log=print, progress=None, write_files=True):
     """
     Run the full QC pass over a directory. Reusable by the CLI and the GUI.
@@ -717,12 +738,7 @@ def run_qc(target_dir, log=print, progress=None, write_files=True):
     report_path = os.path.join(target_dir, "QC_Report.md")
 
     if write_files:
-        log(f"Generating {spec_path}...")
-        with open(spec_path, "w", encoding="utf-8") as fh:
-            fh.write(spec_content)
-        log(f"Generating {report_path}...")
-        with open(report_path, "w", encoding="utf-8") as fh:
-            fh.write(report_content)
+        write_reports(target_dir, spec_content, report_content, log=log)
 
     return {
         "all_expected": all_expected,

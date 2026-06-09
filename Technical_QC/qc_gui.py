@@ -438,7 +438,7 @@ class QcWorker(QThread):
                 self.target_dir,
                 log=lambda m: self.log.emit(str(m)),
                 progress=lambda d, tot, cur: self.progress.emit(d, tot, cur or ""),
-                write_files=True,
+                write_files=False,   # the GUI shows everything; export is on demand
             )
             self.finished_ok.emit(result)
         except Exception as e:  # surface any failure cleanly in the UI
@@ -550,10 +550,13 @@ class MainWindow(QMainWindow):
         counts_box.addStretch(1)
         sum_layout.addLayout(counts_box, 1)
 
-        self.open_report_btn = QPushButton("Open report")
+        self.open_report_btn = QPushButton("Export report")
         self.open_report_btn.setObjectName("Ghost")
         self.open_report_btn.setCursor(Qt.PointingHandCursor)
-        self.open_report_btn.clicked.connect(self._open_report)
+        self.open_report_btn.setToolTip(
+            "Write specifications.md and QC_Report.md into the source folder"
+        )
+        self.open_report_btn.clicked.connect(self._export_report)
         self.open_report_btn.setVisible(False)
         sum_layout.addWidget(self.open_report_btn, alignment=Qt.AlignTop)
         self.summary_card.setVisible(False)
@@ -850,9 +853,24 @@ class MainWindow(QMainWindow):
         # Keep cards top-aligned; the scroll area handles long lists.
         self.results_layout.addStretch(1)
 
-    def _open_report(self):
-        if self.last_result and os.path.isfile(self.last_result["report_path"]):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(self.last_result["report_path"]))
+    def _export_report(self):
+        """Write the Markdown reports on demand (via technical_qc) and open them."""
+        if not self.last_result or not self.selected_dir:
+            return
+        try:
+            spec_path, report_path = qc.write_reports(
+                self.selected_dir,
+                self.last_result["spec_content"],
+                self.last_result["report_content"],
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export failed", str(e))
+            return
+        QMessageBox.information(
+            self, "Report exported",
+            f"Saved into:\n{self.selected_dir}\n\n• specifications.md\n• QC_Report.md",
+        )
+        QDesktopServices.openUrl(QUrl.fromLocalFile(report_path))
 
 
 def main():
