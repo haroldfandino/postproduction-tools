@@ -28,21 +28,49 @@ class ToolNotFoundError(RuntimeError):
     """Raised when ffmpeg/ffprobe cannot be located on the system."""
 
 
+def _bundle_dirs():
+    """
+    Directories to check before PATH for a bundled ffmpeg/ffprobe.
+
+    Covers a frozen PyInstaller build (binaries added next to the app land in
+    sys._MEIPASS / the executable dir, or the macOS .app Resources/Frameworks),
+    plus a local `ffmpeg/` folder next to this module for development.
+    """
+    dirs = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            dirs.append(meipass)
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        dirs.append(exe_dir)
+        dirs.append(os.path.join(exe_dir, "..", "Resources"))   # macOS .app
+        dirs.append(os.path.join(exe_dir, "..", "Frameworks"))  # macOS .app
+    dirs.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg"))
+    return [os.path.normpath(d) for d in dirs if d]
+
+
 def find_executable(name):
     """
     Locate an executable (e.g. "ffmpeg" / "ffprobe") cross-platform.
 
-    Searches PATH first (via shutil.which, which handles the .exe suffix on
-    Windows automatically), then a set of common install directories. Returns
-    the resolved path, or None if it cannot be found.
+    Order: a bundled copy (inside the packaged app or a local ffmpeg/ folder),
+    then PATH, then common install directories. Bundled-first means a packaged
+    app uses its own ffmpeg even on machines that have a different one on PATH.
+    Returns the resolved path, or None if it cannot be found.
     """
-    found = shutil.which(name)
-    if found:
-        return found
-
     exe_names = [name]
     if os.name == "nt":
         exe_names.append(name + ".exe")
+
+    for directory in _bundle_dirs():
+        for exe in exe_names:
+            candidate = os.path.join(directory, exe)
+            if os.path.isfile(candidate):
+                return candidate
+
+    found = shutil.which(name)
+    if found:
+        return found
 
     for directory in _FFMPEG_FALLBACK_DIRS:
         for exe in exe_names:

@@ -15,11 +15,10 @@ backgrounds, rounded frosted cards, pill buttons, and a light/dark theme toggle.
 import os
 import sys
 
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QRectF
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QRectF, QSettings, QUrl
 from PySide6.QtGui import (
-    QFont, QColor, QPainter, QPen, QDesktopServices, QIcon, QPixmap,
+    QFont, QColor, QPainter, QPen, QDesktopServices, QIcon, QPixmap, QPainterPath,
 )
-from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QScrollArea, QFileDialog, QPlainTextEdit, QSizePolicy,
@@ -30,6 +29,36 @@ from PySide6.QtWidgets import (
 # elsewhere (e.g. a packaged build).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import technical_qc as qc
+
+
+# --------------------------------------------------------------------------- #
+# App icon — green rounded square + white checkmark, drawn at runtime so the
+# window/taskbar icon works even when running from source (no asset file).
+# --------------------------------------------------------------------------- #
+
+def app_icon():
+    size = 256
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    pad, radius = 14, 58
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#1f9d57"))
+    p.drawRoundedRect(QRectF(pad, pad, size - 2 * pad, size - 2 * pad), radius, radius)
+
+    pen = QPen(QColor("white"), 26)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    path = QPainterPath()
+    path.moveTo(size * 0.30, size * 0.53)
+    path.lineTo(size * 0.44, size * 0.68)
+    path.lineTo(size * 0.72, size * 0.35)
+    p.drawPath(path)
+    p.end()
+    return QIcon(pm)
 
 
 # --------------------------------------------------------------------------- #
@@ -458,8 +487,12 @@ class MainWindow(QMainWindow):
         if app is not None:
             app.setStyle("Fusion")
         self.setWindowTitle("Technical QC")
+        self.setWindowIcon(app_icon())
         self.resize(960, 760)
-        self.theme_name = "light"
+        # Restore the last-used theme (defaults to light on first run).
+        self.settings = QSettings("indie.io", "Technical QC")
+        saved = self.settings.value("theme", "light")
+        self.theme_name = saved if saved in THEMES else "light"
         self.theme = THEMES[self.theme_name]
         self.selected_dir = None
         self.worker = None
@@ -626,6 +659,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_theme(self):
         self.theme_name = "dark" if self.theme_name == "light" else "light"
+        self.settings.setValue("theme", self.theme_name)  # remember for next launch
         self._apply_theme()
 
     # ---- Folder selection ------------------------------------------------- #
@@ -876,6 +910,8 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Technical QC")
+    app.setOrganizationName("indie.io")
+    app.setWindowIcon(app_icon())
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

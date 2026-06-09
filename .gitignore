@@ -27,6 +27,11 @@ build/
 dist/
 *.spec
 
+# Bundled FFmpeg binaries (large; downloaded per-OS, not version-controlled)
+Technical_QC/ffmpeg/
+# Generated app-icon intermediate (the .ico/.icns are committed)
+Technical_QC/icon.png
+
 # Large media files usually processed by these tools
 *.mp4
 *.mov

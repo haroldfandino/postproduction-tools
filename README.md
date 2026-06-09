@@ -62,7 +62,7 @@ python Technical_QC\qc_gui.py
 python3 Technical_QC/qc_gui.py
 ```
 
-Then choose (or drag in) the folder of deliverables and click **Run QC**. Use the ☾ / ☀ toggle for dark / light mode, the **Progress log** bar to show/hide the live log, and **Export report** to save `specifications.md` and `QC_Report.md` into the source folder.
+Then choose (or drag in) the folder of deliverables and click **Run QC**. Use the ☾ / ☀ toggle for dark / light mode (your choice is remembered between launches), the **Progress log** bar to show/hide the live log, and **Export report** to save `specifications.md` and `QC_Report.md` into the source folder.
 
 #### Command line
 
@@ -126,28 +126,47 @@ ffprobe -version
 ## Building a standalone app (Windows .exe / macOS .app)
 
 `Technical_QC/build_app.py` wraps [PyInstaller](https://pyinstaller.org/) to
-produce a double-clickable standalone app.
+produce a **fully self-contained, double-clickable app** — it bundles Python,
+Qt, and (by default) FFmpeg, so the end user installs **nothing** and never
+touches a terminal.
 
 > **PyInstaller is not a cross-compiler.** Build the Windows `.exe` **on
 > Windows** and the macOS `.app` **on macOS** — each OS builds only its own
 > bundle.
 
+### 1. (Optional) prepare the icon and FFmpeg
+
+```bash
+python make_icon.py            # regenerate icon.ico / icon.icns (already committed)
+```
+
+To bundle FFmpeg (recommended for a no-install experience), drop a **static**
+build of `ffmpeg` and `ffprobe` into `Technical_QC/ffmpeg/`:
+
+- **Windows:** the "essentials"/"full" builds from <https://www.gyan.dev/ffmpeg/builds/>
+  are static — copy `ffmpeg.exe` and `ffprobe.exe` in.
+- **macOS:** use a self-contained static build (e.g. <https://evermeet.cx/ffmpeg/>
+  or <https://osxexperts.net>). **Do not** use Homebrew's `ffmpeg` — it links
+  external dylibs and won't run inside the bundle.
+
+If `Technical_QC/ffmpeg/` is empty, the script falls back to a system copy (with
+a warning), or you can skip bundling with `--no-ffmpeg`.
+
+### 2. Build
+
 ```bash
 python -m pip install pyinstaller
 
 # from the Technical_QC folder, on the target OS:
-python build_app.py            # one-file build (single distributable)
-python build_app.py --onedir   # one-folder build (faster startup)
+python build_app.py             # one-file, FFmpeg bundled (default)
+python build_app.py --onedir    # one-folder build (faster startup)
+python build_app.py --no-ffmpeg # rely on system FFmpeg instead of bundling
 ```
 
 Output lands in `Technical_QC/dist/`:
 
 - **Windows:** `dist/Technical QC.exe`
 - **macOS:** `dist/Technical QC.app` (drag to `/Applications`)
-
-The bundle does **not** include FFmpeg — the target machine still needs FFmpeg
-and FFprobe installed (see *Installing FFmpeg* above). The app searches `PATH`
-and common install locations at runtime.
 
 > macOS note: an unsigned `.app` will be Gatekeeper-blocked on first launch.
 > Right-click → **Open** (or run `xattr -dr com.apple.quarantine "Technical QC.app"`)
