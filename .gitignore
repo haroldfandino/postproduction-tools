@@ -22,6 +22,11 @@ specifications.md
 QC_Report.md
 *_Report.md
 
+# PyInstaller build artifacts (standalone app bundles)
+build/
+dist/
+*.spec
+
 # Large media files usually processed by these tools
 *.mp4
 *.mov

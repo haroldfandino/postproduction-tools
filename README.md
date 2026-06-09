@@ -123,20 +123,35 @@ ffmpeg -version
 ffprobe -version
 ```
 
-## Packaging the QC GUI as a standalone app (optional)
+## Building a standalone app (Windows .exe / macOS .app)
 
-The GUI is structured to bundle with [PyInstaller](https://pyinstaller.org/)
-into a double-clickable app. Build on the target OS (build on Windows for a
-`.exe`, on macOS for a `.app`):
+`Technical_QC/build_app.py` wraps [PyInstaller](https://pyinstaller.org/) to
+produce a double-clickable standalone app.
+
+> **PyInstaller is not a cross-compiler.** Build the Windows `.exe` **on
+> Windows** and the macOS `.app` **on macOS** — each OS builds only its own
+> bundle.
 
 ```bash
 python -m pip install pyinstaller
-# from the Technical_QC folder:
-pyinstaller --noconfirm --windowed --name "Technical QC" qc_gui.py
+
+# from the Technical_QC folder, on the target OS:
+python build_app.py            # one-file build (single distributable)
+python build_app.py --onedir   # one-folder build (faster startup)
 ```
 
-The bundle still relies on FFmpeg/FFprobe being installed on the machine (or
-placed next to the executable). Output lands in `dist/`.
+Output lands in `Technical_QC/dist/`:
+
+- **Windows:** `dist/Technical QC.exe`
+- **macOS:** `dist/Technical QC.app` (drag to `/Applications`)
+
+The bundle does **not** include FFmpeg — the target machine still needs FFmpeg
+and FFprobe installed (see *Installing FFmpeg* above). The app searches `PATH`
+and common install locations at runtime.
+
+> macOS note: an unsigned `.app` will be Gatekeeper-blocked on first launch.
+> Right-click → **Open** (or run `xattr -dr com.apple.quarantine "Technical QC.app"`)
+> to allow it. Code-signing/notarization requires an Apple Developer account.
 
 ## Repository Setup
 
