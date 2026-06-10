@@ -22,7 +22,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QScrollArea, QFileDialog, QPlainTextEdit, QSizePolicy,
+    QPushButton, QToolButton, QFrame, QScrollArea, QFileDialog, QPlainTextEdit, QSizePolicy,
     QGridLayout, QMessageBox,
 )
 
@@ -169,34 +169,44 @@ def build_stylesheet(t):
         font-size: 13px;
         font-weight: 600;
     }}
-    QPushButton#Primary {{
+    /* QToolButton respects border-radius better than QPushButton on macOS */
+    QPushButton, QToolButton {{
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 20px;
+    }}
+    QPushButton#Primary, QToolButton#Primary {{
         background-color: {t['accent']};
         color: {t['accent_text']};
         border: 1px solid {t['accent']};
+        border-style: solid;
         border-radius: 22px;
         padding: 12px 26px;
         font-weight: 600;
         font-size: 14px;
     }}
-    QPushButton#Primary:disabled {{
+    QPushButton#Primary:disabled, QToolButton#Primary:disabled {{
         background-color: {t['border']};
         color: {t['text_muted']};
         border: 1px solid {t['border']};
+        border-style: solid;
     }}
-    QPushButton#Ghost {{
+    QPushButton#Ghost, QToolButton#Ghost {{
         background-color: transparent;
         color: {t['text']};
         border: 1px solid {t['border']};
+        border-style: solid;
         border-radius: 20px;
         padding: 10px 20px;
         font-weight: 600;
     }}
-    QPushButton#Ghost:hover {{
+    QPushButton#Ghost:hover, QToolButton#Ghost:hover {{
         background-color: {t['card_soft']};
     }}
-    QPushButton#IconToggle {{
+    QPushButton#IconToggle, QToolButton#IconToggle {{
         background-color: {t['card_soft']};
         border: 1px solid {t['border']};
+        border-style: solid;
         border-radius: 18px;
         padding: 8px 14px;
         font-weight: 600;
@@ -482,10 +492,11 @@ class QcWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        # Force Fusion so the QSS renders identically on Windows and macOS
+        # Force Fusion on Windows so the QSS renders properly
         # (the native windows11 style fights stylesheet backgrounds/borders).
+        # On macOS, Fusion interferes with QPushButton border-radius, so use default.
         app = QApplication.instance()
-        if app is not None:
+        if app is not None and sys.platform != "darwin":
             app.setStyle("Fusion")
         self.setWindowTitle("Technical QC")
         self.setWindowIcon(app_icon())
@@ -526,8 +537,12 @@ class MainWindow(QMainWindow):
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
         header.addStretch(1)
-        self.theme_btn = QPushButton("☾  Dark")
+        self.theme_btn = QToolButton()
+        self.theme_btn.setText("☾  Dark")
+        self.theme_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.theme_btn.setObjectName("IconToggle")
+        self.theme_btn.setAttribute(Qt.WA_StyledBackground, True)
+        self.theme_btn.setAttribute(Qt.WA_MacShowFocusRect, False)
         self.theme_btn.setCursor(Qt.PointingHandCursor)
         self.theme_btn.clicked.connect(self._toggle_theme)
         header.addWidget(self.theme_btn, alignment=Qt.AlignTop)
@@ -549,13 +564,21 @@ class MainWindow(QMainWindow):
         self.path_label.setObjectName("PathLabel")
         self.path_label.setWordWrap(True)
         row.addWidget(self.path_label, 1)
-        choose = QPushButton("Choose folder")
+        choose = QToolButton()
+        choose.setText("Choose folder")
+        choose.setToolButtonStyle(Qt.ToolButtonTextOnly)
         choose.setObjectName("Ghost")
+        choose.setAttribute(Qt.WA_StyledBackground, True)
+        choose.setAttribute(Qt.WA_MacShowFocusRect, False)
         choose.setCursor(Qt.PointingHandCursor)
         choose.clicked.connect(self._choose_folder)
         row.addWidget(choose)
-        self.run_btn = QPushButton("Run QC")
+        self.run_btn = QToolButton()
+        self.run_btn.setText("Run QC")
+        self.run_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.run_btn.setObjectName("Primary")
+        self.run_btn.setAttribute(Qt.WA_StyledBackground, True)
+        self.run_btn.setAttribute(Qt.WA_MacShowFocusRect, False)
         self.run_btn.setCursor(Qt.PointingHandCursor)
         self.run_btn.setEnabled(False)
         self.run_btn.clicked.connect(self._run_qc)
@@ -584,8 +607,12 @@ class MainWindow(QMainWindow):
         counts_box.addStretch(1)
         sum_layout.addLayout(counts_box, 1)
 
-        self.open_report_btn = QPushButton("Export report")
+        self.open_report_btn = QToolButton()
+        self.open_report_btn.setText("Export report")
+        self.open_report_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.open_report_btn.setObjectName("Ghost")
+        self.open_report_btn.setAttribute(Qt.WA_StyledBackground, True)
+        self.open_report_btn.setAttribute(Qt.WA_MacShowFocusRect, False)
         self.open_report_btn.setCursor(Qt.PointingHandCursor)
         self.open_report_btn.setToolTip(
             "Write specifications.md and QC_Report.md into the source folder"
