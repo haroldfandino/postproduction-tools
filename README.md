@@ -162,14 +162,23 @@ a warning), or you can skip bundling with `--no-ffmpeg`.
 python -m pip install pyinstaller
 
 # from the Technical_QC folder, on the target OS:
-python build_app.py             # one-file, FFmpeg bundled (default)
-python build_app.py --onedir    # one-folder build (faster startup)
+python build_app.py             # default per-OS (see below), FFmpeg bundled
+python build_app.py --onefile   # force a single file
+python build_app.py --onedir    # force a one-folder build
 python build_app.py --no-ffmpeg # rely on system FFmpeg instead of bundling
 ```
 
+The default packaging mode is chosen per-OS (override with the flags above):
+
+- **macOS → one-folder `.app`.** Starts fast — nothing is extracted at launch.
+- **Windows → one-file `.exe`.** A single shareable file (no `_internal` folder);
+  it unpacks the bundled FFmpeg to a temp dir on each launch, so first paint is
+  a little slower. Use `--onedir` if you prefer faster Windows startup over a
+  single file.
+
 Output lands in `Technical_QC/dist/`:
 
-- **Windows:** `dist/Technical QC.exe`
+- **Windows:** `dist/Technical QC.exe` (one file)
 - **macOS:** `dist/Technical QC.app` (drag to `/Applications`)
 
 > macOS note: an unsigned `.app` will be Gatekeeper-blocked on first launch.

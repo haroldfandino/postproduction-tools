@@ -11,6 +11,7 @@ BITRATE_TOLERANCE = 2.0   # Mbps (for MP4)
 DURATION_TOLERANCE_SEC = 1.0 # Seconds
 EXPECTED_FRAME_RATE = "23.976"
 LONGFORM_DURATION_TAG = "longform"
+MAX_SCAN_DEPTH = 6  # how many folder levels below the chosen root to scan
 
 # Common install locations to fall back on when a binary is not on PATH.
 # Covers Homebrew (Intel + Apple Silicon), MacPorts, and typical Windows installs.
@@ -608,15 +609,20 @@ def analyze_file(filepath, expected_specs, log=print):
     return report_items
 
 
+def _display_path(key):
+    """Relative-path key with forward slashes, for cross-platform-consistent display."""
+    return key.replace(os.sep, "/")
+
+
 def generate_specifications_md(all_expected):
     """
     Generates specifications.md with profiles.
     """
     content = "# Video QC Specifications Profiles\n\n"
     content += "This file contains the expected specifications for the files found in the directory.\n\n"
-    
+
     for filename, specs in all_expected.items():
-        content += f"## Profile for: `{filename}`\n\n"
+        content += f"## Profile for: `{_display_path(filename)}`\n\n"
         for key, value in specs.items():
             if key in ["Duration_Sec", "Duration_Tag", "Duration_Check"]: continue # Skip internal values
             if key == "Total bitrate" and value is None: continue
@@ -647,7 +653,7 @@ def generate_qc_report_md(all_results):
     for filename, items in all_results.items():
         if isinstance(items, dict) and "error" in items:
              # Handle error case
-             content += f"### 🔴 FAIL : `{filename}`\n\n"
+             content += f"### 🔴 FAIL : `{_display_path(filename)}`\n\n"
              content += f"**Error: {items['error']}**\n\n"
              continue
 
@@ -655,9 +661,9 @@ def generate_qc_report_md(all_results):
         failed_items = [i for i in items if i['status'] == 'FAIL']
         is_pass = len(failed_items) == 0
         status_icon = "🟢 PASS" if is_pass else "🔴 FAIL"
-        
-        
-        content += f"### {status_icon} : `{filename}`\n\n"
+
+
+        content += f"### {status_icon} : `{_display_path(filename)}`\n\n"
         
         if is_pass:
             content += "**All checks passed.**\n\n"
@@ -677,12 +683,30 @@ def generate_qc_report_md(all_results):
         
     return content
 
-def list_video_files(target_dir):
-    """Return sorted .mp4/.mov filenames in target_dir."""
-    return sorted(
-        f for f in os.listdir(target_dir)
-        if f.lower().endswith((".mp4", ".mov"))
-    )
+def list_video_files(target_dir, max_depth=MAX_SCAN_DEPTH):
+    """
+    Return sorted relative paths of .mp4/.mov files found under target_dir,
+    recursing up to max_depth folder levels below it.
+
+    Paths are relative to target_dir and use the OS-native separator (so they
+    join cleanly with os.path.join). Depth 0 is target_dir itself; a file in
+    target_dir/30/Social is depth 2.
+
+    Infinite recursion is impossible: os.walk(followlinks=False) never traverses
+    symlinked directories (so symlink cycles can't form), and max_depth is a hard
+    secondary bound for pathologically deep real trees.
+    """
+    results = []
+    for root, dirnames, filenames in os.walk(target_dir, followlinks=False):
+        rel_root = os.path.relpath(root, target_dir)
+        depth = 0 if rel_root == "." else rel_root.count(os.sep) + 1
+        if depth >= max_depth:
+            dirnames[:] = []  # at the cap: don't descend further
+        for fn in filenames:
+            if fn.lower().endswith((".mp4", ".mov")):
+                full = os.path.join(root, fn)
+                results.append(os.path.relpath(full, target_dir))
+    return sorted(results)
 
 
 def write_reports(target_dir, spec_content, report_content, log=lambda *_: None):
@@ -741,23 +765,25 @@ def run_qc(target_dir, log=print, progress=None, write_files=True):
     skipped = []
     total = len(files)
 
-    for index, f in enumerate(files):
-        filepath = os.path.join(target_dir, f)
-        log(f"Processing: {f}")
+    for index, relpath in enumerate(files):
+        filepath = os.path.join(target_dir, relpath)
+        log(f"Processing: {relpath}")
         if progress:
-            progress(index, total, f)
+            progress(index, total, relpath)
 
-        tags = parse_filename(f)
+        # parse_filename works on the bare filename; the subfolder is irrelevant
+        # to the naming convention.
+        tags = parse_filename(os.path.basename(relpath))
         if not tags:
-            log(f"Skipping {f} - Does not match naming convention.")
-            skipped.append(f)
+            log(f"Skipping {relpath} - Does not match naming convention.")
+            skipped.append(relpath)
             continue
 
         expected = get_expected_specs(tags)
-        all_expected[f] = expected
+        all_expected[relpath] = expected
 
         results = analyze_file(filepath, expected, log=log)
-        all_results[f] = results
+        all_results[relpath] = results
 
     if progress:
         progress(total, total, None)

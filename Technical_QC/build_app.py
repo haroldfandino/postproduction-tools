@@ -5,13 +5,18 @@ Run this on the platform you want to target — PyInstaller is NOT a
 cross-compiler, so build the Windows .exe on Windows and the macOS .app on
 macOS. PyInstaller bundles Python itself, so end-users need nothing installed.
 
-    python build_app.py             # one-file, FFmpeg bundled (default)
-    python build_app.py --onedir    # one-folder build (faster startup)
+    python build_app.py             # default per-OS (see below), FFmpeg bundled
+    python build_app.py --onefile   # force a single file
+    python build_app.py --onedir    # force a one-folder build
     python build_app.py --no-ffmpeg # don't bundle FFmpeg (use system FFmpeg)
 
+Default packaging mode (overridable with the flags above):
+    macOS   -> one-folder .app  (fast startup; no per-launch extraction)
+    Windows -> one-file .exe    (a single shareable file; extracts on launch)
+
 Output:
-    Windows : dist/Technical QC.exe          (one-file)
-              dist/Technical QC/...           (one-folder)
+    Windows : dist/Technical QC.exe           (one-file, no _internal folder)
+              dist/Technical QC/...            (one-folder, if --onedir)
     macOS   : dist/Technical QC.app           (drag to /Applications)
 
 FFmpeg: by default the script bundles ffmpeg + ffprobe so the app is fully
@@ -71,7 +76,14 @@ def _ffmpeg_binaries():
 
 
 def main():
-    onedir = "--onedir" in sys.argv
+    # Default per-OS (flags override): one-folder on macOS for fast startup,
+    # one-file elsewhere for a single shareable executable.
+    if "--onedir" in sys.argv:
+        onedir = True
+    elif "--onefile" in sys.argv:
+        onedir = False
+    else:
+        onedir = sys.platform == "darwin"
     bundle_ffmpeg = "--no-ffmpeg" not in sys.argv
 
     try:

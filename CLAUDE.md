@@ -55,8 +55,9 @@ python -m pip install pyinstaller
 
 # Build the Technical QC standalone app (from Technical_QC folder)
 cd Technical_QC
-python build_app.py              # one-file build with bundled FFmpeg
-python build_app.py --onedir     # one-folder build (faster startup)
+python build_app.py              # default per-OS: one-folder .app on macOS, one-file .exe on Windows
+python build_app.py --onefile    # force a single file
+python build_app.py --onedir     # force a one-folder build
 python build_app.py --no-ffmpeg  # rely on system FFmpeg
 
 # (Optional) Regenerate app icon

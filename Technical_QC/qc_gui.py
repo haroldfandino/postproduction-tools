@@ -197,7 +197,7 @@ def build_stylesheet(t):
         border: 1px solid {t['border']};
         border-style: solid;
         border-radius: 20px;
-        padding: 10px 20px;
+        padding: 12px 20px;
         font-weight: 600;
     }}
     QPushButton#Ghost:hover, QToolButton#Ghost:hover {{
@@ -235,6 +235,10 @@ def build_stylesheet(t):
     }}
     QFrame#LogBar:hover {{
         border: 1px solid {t['text_muted']};
+    }}
+    /* Match the Source Folder section: all log-bar text at 12px. */
+    QFrame#LogBar QLabel {{
+        font-size: 12px;
     }}
     QFrame#DropZone {{
         background-color: {t['card_soft']};
@@ -854,7 +858,7 @@ class MainWindow(QMainWindow):
         for name in files:
             r = QHBoxLayout()
             r.setSpacing(12)
-            fn = QLabel(name)
+            fn = QLabel(name.replace(os.sep, "/"))  # show subfolder, fwd slashes
             fn.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             chip = QLabel("Queued")
             chip.setObjectName("Chip")
@@ -900,15 +904,16 @@ class MainWindow(QMainWindow):
             return (2 if is_pass else 1, name)
 
         for name, items in sorted(all_results.items(), key=sort_key):
+            display = name.replace(os.sep, "/")  # show subfolder, fwd slashes
             if isinstance(items, dict) and "error" in items:
-                card = FileResultCard(name, [], self.theme, error=items["error"])
+                card = FileResultCard(display, [], self.theme, error=items["error"])
             else:
-                card = FileResultCard(name, items, self.theme)
+                card = FileResultCard(display, items, self.theme)
             self.results_layout.addWidget(card)
 
         # Skipped files note
         for name in skipped:
-            note = QLabel(f"⤫  {name} — skipped (does not match naming convention)")
+            note = QLabel(f"⤫  {name.replace(os.sep, '/')} — skipped (does not match naming convention)")
             note.setObjectName("Subtitle")
             self.results_layout.addWidget(note)
 
