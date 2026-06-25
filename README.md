@@ -5,6 +5,7 @@ Small Python utilities for common post-production workflows:
 - Extract still frames from video files.
 - Rename still images using a consistent project naming convention.
 - Run technical QC checks on delivered video files and export Markdown reports.
+- Find video references whose color metadata is not standard Rec. 709.
 
 ## Tools
 
@@ -77,6 +78,21 @@ python Technical_QC\technical_qc.py "C:\path\to\deliverables"
 # macOS / Linux
 python3 Technical_QC/technical_qc.py "/path/to/deliverables"
 ```
+
+### Rec. 709 Finder
+
+`HDR-finder/rec709_finder.py` scans folders, individual videos, After Effects
+projects (`.aep` / `.aepx`), and Premiere Pro projects (`.prproj`) for video
+references whose color metadata is not standard Rec. 709.
+
+```powershell
+python HDR-finder\rec709_finder.py "C:\path\to\project.aep"
+python HDR-finder\rec709_finder.py "C:\path\to\folder" --json scan.json --markdown scan.md
+```
+
+The tool uses `ffprobe` to check `color_primaries`, `color_transfer`, and
+`color_space` / matrix. Known values other than `bt709` are reported as
+`non_rec709`; files with missing color metadata are listed as `unknown`.
 
 ## Requirements
 
