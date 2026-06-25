@@ -342,6 +342,13 @@ class Badge(QLabel):
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
 
 
+def soft_wrap_text(text):
+    value = str(text)
+    for char in ("\\", "/", "_", "-", "."):
+        value = value.replace(char, char + "\u200b")
+    return value
+
+
 class ResultCard(QFrame):
     def __init__(self, result, theme, expanded=False):
         super().__init__()
@@ -365,6 +372,8 @@ class ResultCard(QFrame):
         self.toggle_btn.setCursor(Qt.PointingHandCursor)
         self.toggle_btn.setToolTip(result["path"])
         self.toggle_btn.clicked.connect(self._toggle)
+        self.toggle_btn.setMinimumWidth(0)
+        self.toggle_btn.setMaximumWidth(420)
         self.toggle_btn.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         meta = QLabel(self._metadata_line())
@@ -381,6 +390,7 @@ class ResultCard(QFrame):
         open_btn.setToolTip("Reveal file in Explorer/Finder")
         open_btn.setEnabled(Path(result["path"]).is_file())
         open_btn.setMinimumWidth(82)
+        open_btn.setMaximumWidth(104)
         open_btn.clicked.connect(self._open_file)
         header.addWidget(self.toggle_btn, 1)
         header.addWidget(meta)
@@ -456,8 +466,10 @@ class ResultCard(QFrame):
         return rows
 
     def _cell(self, text, bold=False):
-        lab = QLabel(str(text))
+        lab = QLabel(soft_wrap_text(text))
         lab.setWordWrap(True)
+        lab.setMinimumWidth(0)
+        lab.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         if bold:
             lab.setStyleSheet("font-weight: 600;")
         else:
