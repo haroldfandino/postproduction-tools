@@ -233,10 +233,12 @@ def scan_references(
     references: list[MediaReference],
     ffprobe: str,
     include_unknown: bool = False,
+    verbose: bool = True,
 ) -> list[dict]:
     results = []
     for index, ref in enumerate(references, start=1):
-        print(f"[{index}/{len(references)}] {ref.path}")
+        if verbose:
+            print(f"[{index}/{len(references)}] {ref.path}")
         item = {
             "path": str(ref.path),
             "source": ref.source,
@@ -279,7 +281,26 @@ def write_json_report(results: list[dict], output_path: Path) -> None:
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
 
-def write_markdown_report(results: list[dict], output_path: Path) -> None:
+def format_finding_summary(result: dict) -> str:
+    if result["status"] == "non_rec709":
+        fields = ", ".join(
+            f"{key}={value}" for key, value in result["non_rec709_fields"].items()
+        )
+        return fields
+    if result["status"] == "unknown":
+        return f"unknown fields: {', '.join(result.get('unknown_fields', []))}"
+    if result["status"] == "missing":
+        return "missing media"
+    if result["status"] == "probe_error":
+        return f"probe error: {result.get('error', '')}"
+    return result["status"]
+
+
+def write_markdown_report(
+    results: list[dict],
+    output_path: Path,
+    compact: bool = False,
+) -> None:
     counts = {}
     for result in results:
         counts[result["status"]] = counts.get(result["status"], 0) + 1
@@ -298,18 +319,25 @@ def write_markdown_report(results: list[dict], output_path: Path) -> None:
         "",
     ]
 
-    for title, status in [
+    sections = [
         ("Non-Rec. 709", "non_rec709"),
         ("Unknown Color Metadata", "unknown"),
         ("Missing Media", "missing"),
         ("Probe Errors", "probe_error"),
-        ("Rec. 709", "rec709"),
-    ]:
+    ]
+    if not compact:
+        sections.append(("Rec. 709", "rec709"))
+
+    for title, status in sections:
         section = [result for result in results if result["status"] == status]
         if not section:
             continue
         lines.extend([f"## {title}", ""])
         for result in section:
+            if compact:
+                lines.append(f"- `{result['path']}` - {format_finding_summary(result)}")
+                continue
+
             lines.append(f"### {result['path']}")
             lines.append("")
             lines.append(f"- Source: {result['source_type']} - {result['source']}")
@@ -330,6 +358,9 @@ def write_markdown_report(results: list[dict], output_path: Path) -> None:
                 lines.append(f"- Unknown fields: {', '.join(result.get('unknown_fields', []))}")
             if status == "probe_error":
                 lines.append(f"- Error: {result.get('error', '')}")
+            lines.append("")
+
+        if compact:
             lines.append("")
 
     output_path.write_text("\n".join(lines), encoding="utf-8")
@@ -369,6 +400,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Markdown report path. Defaults to Rec709_Scan_Report.md next to a single target.",
     )
+    parser.add_argument(
+        "--compact-report",
+        action="store_true",
+        help="Write a shorter Markdown report with findings only.",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-file progress and print only the summary/findings.",
+    )
     parser.add_argument("--json", type=Path, default=None, help="Optional JSON report path.")
     return parser.parse_args()
 
@@ -400,9 +441,14 @@ def main() -> int:
         print("No video references found.")
         return 0
 
-    results = scan_references(references, ffprobe, include_unknown=args.include_unknown)
+    results = scan_references(
+        references,
+        ffprobe,
+        include_unknown=args.include_unknown,
+        verbose=not args.quiet,
+    )
     markdown_path = args.markdown or default_report_path(targets)
-    write_markdown_report(results, markdown_path)
+    write_markdown_report(results, markdown_path, compact=args.compact_report)
     if args.json:
         write_json_report(results, args.json)
 
@@ -417,6 +463,17 @@ def main() -> int:
     print(f"Missing media: {counts.get('missing', 0)}")
     print(f"Probe errors: {counts.get('probe_error', 0)}")
     print(f"Report: {markdown_path}")
+    if args.quiet:
+        findings = [
+            result
+            for result in results
+            if result["status"] in {"non_rec709", "unknown", "missing", "probe_error"}
+        ]
+        if findings:
+            print("")
+            print("Findings:")
+            for result in findings:
+                print(f"- {result['path']} ({format_finding_summary(result)})")
 
     return 1 if counts.get("non_rec709", 0) else 0
 

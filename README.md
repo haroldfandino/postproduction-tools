@@ -88,6 +88,7 @@ references whose color metadata is not standard Rec. 709.
 ```powershell
 python HDR-finder\rec709_finder.py "C:\path\to\project.aep"
 python HDR-finder\rec709_finder.py "C:\path\to\folder" --json scan.json --markdown scan.md
+python HDR-finder\rec709_finder.py "C:\path\to\project.aep" --quiet --compact-report
 ```
 
 The tool uses `ffprobe` to check `color_primaries`, `color_transfer`, and

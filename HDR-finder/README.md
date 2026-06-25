@@ -27,6 +27,12 @@ python HDR-finder\rec709_finder.py "C:\path\to\project.aep" --json scan.json --m
 python HDR-finder\rec709_finder.py "C:\path\to\project.prproj" --include-unknown
 ```
 
+For a shorter terminal run and a findings-only Markdown report:
+
+```powershell
+python HDR-finder\rec709_finder.py "C:\path\to\project.aep" --quiet --compact-report
+```
+
 ## What Counts As Non-Rec. 709
 
 A video is reported as `non_rec709` when any known video color field is not
@@ -43,4 +49,3 @@ prove that they are Rec. 709 or non-Rec. 709 from metadata alone.
 
 - Python 3.10 or newer
 - FFmpeg / FFprobe available on `PATH`
-
