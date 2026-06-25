@@ -234,11 +234,16 @@ def scan_references(
     ffprobe: str,
     include_unknown: bool = False,
     verbose: bool = True,
+    log=None,
+    progress=None,
 ) -> list[dict]:
     results = []
     for index, ref in enumerate(references, start=1):
         if verbose:
-            print(f"[{index}/{len(references)}] {ref.path}")
+            message = f"[{index}/{len(references)}] {ref.path}"
+            log(message) if log else print(message)
+        if progress:
+            progress(index, len(references), str(ref.path))
         item = {
             "path": str(ref.path),
             "source": ref.source,

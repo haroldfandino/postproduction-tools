@@ -85,6 +85,13 @@ python3 Technical_QC/technical_qc.py "/path/to/deliverables"
 projects (`.aep` / `.aepx`), and Premiere Pro projects (`.prproj`) for video
 references whose color metadata is not standard Rec. 709.
 
+The desktop GUI shows non-Rec. 709 findings by default and keeps clean Rec. 709
+videos hidden in a collapsible section:
+
+```powershell
+python HDR-finder\rec709_gui.py
+```
+
 ```powershell
 python HDR-finder\rec709_finder.py "C:\path\to\project.aep"
 python HDR-finder\rec709_finder.py "C:\path\to\folder" --json scan.json --markdown scan.md

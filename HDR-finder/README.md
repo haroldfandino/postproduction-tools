@@ -15,6 +15,17 @@ files are used only to discover referenced media paths.
 
 ## Usage
 
+Desktop GUI:
+
+```powershell
+python HDR-finder\rec709_gui.py
+```
+
+The GUI shows non-Rec. 709, unknown, missing, and probe-error results first.
+Clean Rec. 709 videos are hidden in a collapsible section by default.
+
+Command line:
+
 ```powershell
 python HDR-finder\rec709_finder.py "C:\path\to\folder"
 ```
