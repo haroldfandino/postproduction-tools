@@ -9,6 +9,7 @@ section by default.
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,7 +20,6 @@ from PySide6.QtGui import (
     QFont,
     QIcon,
     QPainter,
-    QPainterPath,
     QPen,
     QPixmap,
 )
@@ -45,7 +45,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rec709_finder as finder
 
 
+ICON_TEXT = "\U0001f3a8"
+
+
+def resource_path(name):
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / name
+
+
 def app_icon():
+    icon_path = resource_path("icon.ico")
+    if icon_path.is_file():
+        return QIcon(str(icon_path))
+
     size = 256
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
@@ -54,19 +66,16 @@ def app_icon():
 
     pad, radius = 14, 58
     p.setPen(Qt.NoPen)
-    p.setBrush(QColor("#2f6f9f"))
+    p.setBrush(QColor("#ffffff"))
     p.drawRoundedRect(QRectF(pad, pad, size - 2 * pad, size - 2 * pad), radius, radius)
+    p.setPen(QPen(QColor("#dce4ee"), 3))
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QRectF(pad + 2, pad + 2, size - 2 * pad - 4, size - 2 * pad - 4), radius, radius)
 
-    pen = QPen(QColor("white"), 22)
-    pen.setCapStyle(Qt.RoundCap)
-    pen.setJoinStyle(Qt.RoundJoin)
-    p.setPen(pen)
-    path = QPainterPath()
-    path.moveTo(size * 0.28, size * 0.66)
-    path.lineTo(size * 0.42, size * 0.36)
-    path.lineTo(size * 0.58, size * 0.66)
-    path.lineTo(size * 0.72, size * 0.36)
-    p.drawPath(path)
+    font = QFont("Segoe UI Emoji")
+    font.setPixelSize(144)
+    p.setFont(font)
+    p.drawText(pm.rect(), Qt.AlignCenter, ICON_TEXT)
     p.end()
     return QIcon(pm)
 
@@ -350,17 +359,32 @@ class ResultCard(QFrame):
 
         header = QHBoxLayout()
         header.setSpacing(10)
-        self.toggle_btn = QPushButton(result["path"])
+        self.display_name = Path(result["path"]).name or result["path"]
+        self.toggle_btn = QPushButton(self.display_name)
         self.toggle_btn.setObjectName("FileHeader")
         self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.setToolTip(result["path"])
         self.toggle_btn.clicked.connect(self._toggle)
         self.toggle_btn.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         meta = QLabel(self._metadata_line())
         meta.setObjectName("Subtitle")
+        meta.setMinimumWidth(110)
         meta.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        open_btn = QToolButton()
+        open_btn.setText("Reveal")
+        open_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        open_btn.setObjectName("Ghost")
+        open_btn.setAttribute(Qt.WA_StyledBackground, True)
+        open_btn.setAttribute(Qt.WA_MacShowFocusRect, False)
+        open_btn.setCursor(Qt.PointingHandCursor)
+        open_btn.setToolTip("Reveal file in Explorer/Finder")
+        open_btn.setEnabled(Path(result["path"]).is_file())
+        open_btn.setMinimumWidth(82)
+        open_btn.clicked.connect(self._open_file)
         header.addWidget(self.toggle_btn, 1)
         header.addWidget(meta)
+        header.addWidget(open_btn)
         header.addWidget(Badge(label, fg, bg))
         outer.addLayout(header)
 
@@ -442,12 +466,29 @@ class ResultCard(QFrame):
 
     def _set_header_text(self):
         arrow = "v  " if self._expanded else ">  "
-        self.toggle_btn.setText(arrow + self.result["path"])
+        self.toggle_btn.setText(arrow + self.display_name)
 
     def _toggle(self):
         self._expanded = not self._expanded
         self.details.setVisible(self._expanded)
         self._set_header_text()
+
+    def _open_file(self):
+        reveal_file(self.result["path"])
+
+
+def reveal_file(path):
+    media_path = Path(path)
+    if not media_path.is_file():
+        return
+
+    if os.name == "nt":
+        normalized = os.path.normpath(os.path.abspath(str(media_path)))
+        subprocess.Popen(f'explorer.exe /select,"{normalized}"')
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(media_path)])
+    else:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(media_path.parent)))
 
 
 class CollapsibleSection(QFrame):
@@ -535,6 +576,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Rec. 709 Finder")
         self.setWindowIcon(app_icon())
         self.resize(980, 760)
+        self.setMinimumSize(980, 760)
 
         self.settings = QSettings("indie.io", "Rec. 709 Finder")
         saved = self.settings.value("theme", "light")
@@ -582,6 +624,8 @@ class MainWindow(QMainWindow):
 
         self.source_card = QFrame()
         self.source_card.setObjectName("Card")
+        self.source_card.setMinimumHeight(118)
+        self.source_card.setMaximumHeight(132)
         sc = QVBoxLayout(self.source_card)
         sc.setContentsMargins(22, 20, 22, 20)
         sc.setSpacing(14)
@@ -591,10 +635,22 @@ class MainWindow(QMainWindow):
 
         row = QHBoxLayout()
         row.setSpacing(12)
+        source_text = QVBoxLayout()
+        source_text.setContentsMargins(0, 0, 0, 0)
+        source_text.setSpacing(4)
         self.path_label = QLabel("Drop a folder, video, After Effects project, or Premiere project here.")
         self.path_label.setObjectName("PathLabel")
         self.path_label.setWordWrap(True)
-        row.addWidget(self.path_label, 1)
+        self.path_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.path_detail = QLabel("")
+        self.path_detail.setObjectName("Subtitle")
+        self.path_detail.setWordWrap(True)
+        self.path_detail.setMaximumHeight(42)
+        self.path_detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.path_detail.setVisible(False)
+        source_text.addWidget(self.path_label)
+        source_text.addWidget(self.path_detail)
+        row.addLayout(source_text, 1)
 
         choose_file = QToolButton()
         choose_file.setText("Choose file")
@@ -738,7 +794,10 @@ class MainWindow(QMainWindow):
     def _set_target(self, target):
         self.selected_target = target
         path = Path(target)
-        self.path_label.setText(str(path))
+        self.path_label.setText("Selected source")
+        self.path_detail.setText(str(path))
+        self.path_detail.setToolTip(str(path))
+        self.path_detail.setVisible(True)
         self.run_btn.setEnabled(True)
         self._show_ready()
 
@@ -821,7 +880,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
         layout.addStretch(1)
 
-        icon = QLabel("+")
+        icon = QLabel(ICON_TEXT)
         icon.setObjectName("IconBox")
         icon.setFixedSize(76, 76)
         icon.setAlignment(Qt.AlignCenter)
@@ -836,7 +895,10 @@ class MainWindow(QMainWindow):
         sub.setObjectName("Subtitle")
         sub.setAlignment(Qt.AlignCenter)
         sub.setWordWrap(True)
-        layout.addWidget(sub, alignment=Qt.AlignHCenter)
+        sub.setMaximumWidth(460)
+        sub.setMinimumHeight(44)
+        sub.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
+        layout.addWidget(sub, 0, Qt.AlignHCenter)
         layout.addStretch(1)
 
         self.results_layout.addWidget(zone, 1)

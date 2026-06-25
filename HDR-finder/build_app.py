@@ -21,6 +21,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENTRY = os.path.join(HERE, "rec709_gui.py")
 
 
+def _icon_path():
+    name = "icon.icns" if sys.platform == "darwin" else "icon.ico"
+    path = os.path.join(HERE, name)
+    return path if os.path.isfile(path) else None
+
+
 def _ffprobe_binary():
     ext = ".exe" if os.name == "nt" else ""
     local = os.path.join(HERE, "ffmpeg", "ffprobe" + ext)
@@ -85,6 +91,12 @@ def main():
         APP_NAME,
         "--onedir" if onedir else "--onefile",
     ]
+
+    icon = _icon_path()
+    if icon:
+        args += ["--icon", icon]
+        args += ["--add-data", icon + os.pathsep + "."]
+        print("Using icon:", icon)
 
     if bundle_ffprobe:
         ffprobe, from_system = _ffprobe_binary()
