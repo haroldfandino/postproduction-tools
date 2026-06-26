@@ -443,6 +443,8 @@ class ResultCard(QFrame):
             ("Source", f"{result.get('source_type', '')} - {result.get('source', '')}"),
             ("Path", result.get("path", "")),
         ]
+        if result.get("original_path"):
+            rows.append(("Project reference", result["original_path"]))
         if result["status"] == "probe_error":
             rows.append(("Error", result.get("error", "")))
             return rows

@@ -36,6 +36,7 @@ class MediaReference:
     path: Path
     source: str
     source_type: str
+    original_path: str | None = None
 
 
 def find_ffprobe() -> str | None:
@@ -150,6 +151,104 @@ def normalize_embedded_path(raw: str) -> str:
     return text.strip().strip("'\"")
 
 
+def is_windows_absolute_path(path_text: str) -> bool:
+    return bool(re.match(r"^[A-Za-z]:[\\/]", path_text)) or path_text.startswith("\\\\")
+
+
+def embedded_path_parts(path_text: str) -> list[str]:
+    text = path_text.replace("\\", "/").strip()
+    text = re.sub(r"^[A-Za-z]:/+", "", text)
+    text = re.sub(r"^/+", "", text)
+    return [part for part in text.split("/") if part]
+
+
+def dedupe_paths(paths: Iterable[Path]) -> list[Path]:
+    seen: set[str] = set()
+    unique = []
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def project_overlap_candidates(raw_parts: list[str], project_path: Path) -> list[Path]:
+    project_parts = list(project_path.resolve().parent.parts)
+    project_lower = [part.lower() for part in project_parts]
+    raw_lower = [part.lower() for part in raw_parts]
+    matches = []
+
+    for project_index in range(len(project_lower)):
+        for raw_index in range(len(raw_lower)):
+            length = 0
+            while (
+                project_index + length < len(project_lower)
+                and raw_index + length < len(raw_lower)
+                and project_lower[project_index + length] == raw_lower[raw_index + length]
+            ):
+                length += 1
+            if length >= 2:
+                matches.append((length, project_index, raw_index))
+
+    candidates = []
+    for _, project_index, raw_index in sorted(matches, reverse=True):
+        candidate_parts = project_parts[:project_index] + raw_parts[raw_index:]
+        candidates.append(Path(*candidate_parts))
+    return dedupe_paths(candidates)
+
+
+def lucidlink_volume_candidates(raw_parts: list[str]) -> list[Path]:
+    lower_parts = [part.lower() for part in raw_parts]
+    starts = [index + 1 for index, part in enumerate(lower_parts) if part == "lucidlink"]
+    if not starts and len(raw_parts) > 1 and lower_parts[1] == "filespace":
+        starts = [0]
+
+    candidates = []
+    if len(raw_parts) > 2 and lower_parts[0] == "volumes":
+        candidates.append(Path("/").joinpath(*raw_parts))
+
+    for start in starts:
+        if start >= len(raw_parts):
+            continue
+
+        candidates.append(Path("/Volumes").joinpath(*raw_parts[start:]))
+
+        if start + 1 < len(raw_parts) and raw_parts[start + 1].lower() == "filespace":
+            candidates.append(Path("/Volumes") / raw_parts[start] / Path(*raw_parts[start + 2:]))
+
+    return dedupe_paths(candidates)
+
+
+def choose_existing_path(candidates: Iterable[Path]) -> Path | None:
+    fallback = None
+    for candidate in candidates:
+        if fallback is None:
+            fallback = candidate
+        if candidate.is_file():
+            return candidate.resolve()
+        if candidate.exists() and fallback is None:
+            fallback = candidate
+    return fallback
+
+
+def resolve_project_media_path(raw_path: str, project_path: Path) -> tuple[Path, str | None]:
+    normalized = normalize_embedded_path(raw_path)
+    if not is_windows_absolute_path(normalized):
+        return Path(normalized), None
+
+    raw_parts = embedded_path_parts(normalized)
+    candidates = dedupe_paths(
+        project_overlap_candidates(raw_parts, project_path)
+        + lucidlink_volume_candidates(raw_parts)
+    )
+    translated = choose_existing_path(candidates)
+    if translated:
+        return translated, normalized
+    return Path(normalized), None
+
+
 def read_project_text(project_path: Path) -> str:
     data = project_path.read_bytes()
     if project_path.suffix.lower() == ".prproj" and data.startswith(b"\x1f\x8b"):
@@ -161,7 +260,7 @@ def read_project_text(project_path: Path) -> str:
     return "\n".join(chunks)
 
 
-def extract_media_paths_from_project(project_path: Path) -> list[Path]:
+def extract_media_paths_from_project(project_path: Path) -> list[tuple[Path, str | None]]:
     text = read_project_text(project_path)
     ext_pattern = "|".join(re.escape(ext[1:]) for ext in sorted(VIDEO_EXTENSIONS))
     full_path_pattern = re.compile(
@@ -173,23 +272,23 @@ def extract_media_paths_from_project(project_path: Path) -> list[Path]:
         re.IGNORECASE,
     )
 
-    found: set[Path] = set()
+    found: dict[Path, str | None] = {}
     for match in full_path_pattern.finditer(text):
-        candidate = Path(normalize_embedded_path(match.group(0)))
-        found.add(candidate)
+        candidate, original = resolve_project_media_path(match.group(0), project_path)
+        found[candidate] = original
 
     if project_path.suffix.lower() in {".aepx", ".prproj"}:
         for match in relative_pattern.finditer(text):
             raw = normalize_embedded_path(match.group(0))
-            if re.match(r"^[A-Za-z]:[\\/]", raw) or raw.startswith("\\\\"):
+            if is_windows_absolute_path(raw):
                 continue
             if any(char in raw for char in "<>"):
                 continue
             candidate = (project_path.parent / raw).resolve()
             if candidate.suffix.lower() in VIDEO_EXTENSIONS:
-                found.add(candidate)
+                found[candidate] = None
 
-    return sorted(found, key=lambda path: str(path).lower())
+    return sorted(found.items(), key=lambda item: str(item[0]).lower())
 
 
 def iter_folder_media(folder: Path, max_depth: int | None = None) -> Iterable[Path]:
@@ -221,8 +320,13 @@ def collect_references(targets: list[Path], max_depth: int | None) -> list[Media
             resolved = target.resolve()
             references[resolved] = MediaReference(resolved, str(target), "file")
         elif suffix in PROJECT_EXTENSIONS:
-            for media_path in extract_media_paths_from_project(target):
-                references[media_path] = MediaReference(media_path, str(target), suffix[1:])
+            for media_path, original_path in extract_media_paths_from_project(target):
+                references[media_path] = MediaReference(
+                    media_path,
+                    str(target),
+                    suffix[1:],
+                    original_path,
+                )
         else:
             print(f"Skipping unsupported target: {target}", file=sys.stderr)
 
@@ -250,6 +354,8 @@ def scan_references(
             "source_type": ref.source_type,
             "exists": ref.path.is_file(),
         }
+        if ref.original_path:
+            item["original_path"] = ref.original_path
         if not item["exists"]:
             item["status"] = "missing"
             results.append(item)
@@ -346,6 +452,8 @@ def write_markdown_report(
             lines.append(f"### {result['path']}")
             lines.append("")
             lines.append(f"- Source: {result['source_type']} - {result['source']}")
+            if result.get("original_path"):
+                lines.append(f"- Project reference: {result['original_path']}")
             if status in {"non_rec709", "unknown", "rec709"}:
                 lines.append(f"- Codec: {result.get('codec_name', '')}")
                 lines.append(f"- Size: {result.get('width', '')}x{result.get('height', '')}")
