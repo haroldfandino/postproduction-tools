@@ -958,8 +958,10 @@ class MainWindow(QMainWindow):
         counts = self._counts(results)
 
         total = len(results)
-        finding_statuses = {"non_rec709", "unknown", "missing", "probe_error"}
+        finding_statuses = {"non_rec709", "unknown"}
+        error_statuses = {"missing", "probe_error"}
         findings = [result for result in results if result["status"] in finding_statuses]
+        errors = [result for result in results if result["status"] in error_statuses]
         passes = [result for result in results if result["status"] == "rec709"]
         non_rec709 = counts.get("non_rec709", 0)
 
@@ -968,8 +970,11 @@ class MainWindow(QMainWindow):
         rate = (non_rec709 / total) if total else 0.0
         self.ring.set_value(rate)
         self.summary_title.setText(f"{non_rec709} non-Rec. 709 found")
+        hidden_parts = [f"{len(passes)} Rec. 709"]
+        if errors:
+            hidden_parts.append(f"{len(errors)} video error(s)")
         self.summary_sub.setText(
-            f"{total} reference(s) scanned - {len(passes)} Rec. 709 hidden by default"
+            f"{total} reference(s) scanned - {', '.join(hidden_parts)} hidden by default"
         )
 
         if not results:
@@ -981,6 +986,12 @@ class MainWindow(QMainWindow):
                 self.results_layout.addWidget(ResultCard(result, self.theme, expanded=True))
         else:
             self._add_empty_results("No non-Rec. 709 media found.")
+
+        if errors:
+            section = CollapsibleSection(f"Hidden video errors ({len(errors)})", self.theme)
+            for result in sorted(errors, key=lambda item: (item["status"], item["path"].lower())):
+                section.add_widget(ResultCard(result, self.theme, expanded=False))
+            self.results_layout.addWidget(section)
 
         if passes:
             section = CollapsibleSection(f"Hidden Rec. 709 videos ({len(passes)})", self.theme)
