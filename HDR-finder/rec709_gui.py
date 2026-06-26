@@ -54,9 +54,10 @@ def resource_path(name):
 
 
 def app_icon():
-    icon_path = resource_path("icon.ico")
-    if icon_path.is_file():
-        return QIcon(str(icon_path))
+    for icon_name in ("icon.icns", "icon.ico"):
+        icon_path = resource_path(icon_name)
+        if icon_path.is_file():
+            return QIcon(str(icon_path))
 
     size = 256
     pm = QPixmap(size, size)

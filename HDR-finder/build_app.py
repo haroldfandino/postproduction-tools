@@ -12,6 +12,7 @@ a single .exe in HDR-finder/dist/.
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -62,6 +63,20 @@ def _resolve_windows_shim(path):
     if match and os.path.isfile(match.group(1)):
         return os.path.realpath(match.group(1))
     return path
+
+
+def _clean_macos_dist(dist):
+    app_name = APP_NAME + ".app"
+    for name in os.listdir(dist):
+        if name == app_name:
+            continue
+
+        path = os.path.join(dist, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        print("Removed non-app dist item:", path)
 
 
 def main():
@@ -119,6 +134,9 @@ def main():
         return result.returncode
 
     dist = os.path.join(HERE, "dist")
+    if sys.platform == "darwin" and onedir:
+        _clean_macos_dist(dist)
+
     print("\nBuild complete. Find your app in:", dist)
     if sys.platform == "darwin":
         print("  ->", os.path.join(dist, APP_NAME + ".app"))

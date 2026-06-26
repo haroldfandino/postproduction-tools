@@ -39,14 +39,32 @@ class MediaReference:
     original_path: str | None = None
 
 
+def bundled_binary_dirs() -> list[Path]:
+    dirs = []
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            dirs.append(Path(meipass))
+        exe_dir = Path(sys.executable).resolve().parent
+        dirs.extend(
+            [
+                exe_dir,
+                exe_dir.parent / "Resources",
+                exe_dir.parent / "Frameworks",
+            ]
+        )
+    dirs.append(Path(__file__).resolve().parent / "ffmpeg")
+    return dirs
+
+
 def find_ffprobe() -> str | None:
     exe_names = ["ffprobe.exe", "ffprobe"] if os.name == "nt" else ["ffprobe"]
-    local_ffmpeg = Path(__file__).resolve().parent / "ffmpeg"
 
-    for name in exe_names:
-        candidate = local_ffmpeg / name
-        if candidate.is_file():
-            return str(candidate)
+    for directory in bundled_binary_dirs():
+        for name in exe_names:
+            candidate = directory / name
+            if candidate.is_file():
+                return str(candidate)
 
     found = shutil.which("ffprobe")
     if found:
